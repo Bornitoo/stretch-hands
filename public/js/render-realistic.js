@@ -1,13 +1,11 @@
-// render-realistic.js — рендер №2: WebGL-лизквифай реальных пикселей предплечья.
-// Рисует в собственный offscreen GL-канвас: зеркальное видео фоном + «ленту»-предплечье,
-// чья текстура берётся из реального участка локоть→кисть и растягивается вдоль
-// удлинённой оси (приём Snapchat-линз). app блитит этот канвас в основной 2D-канвас.
-//
-// Требует позу (локоть). Если локтя нет — draw() возвращает false, и app падает на cartoon.
+// render-realistic.js — рендер №2: WebGL-лизквифай реальных пикселей ПАЛЬЦЕВ.
+// Для каждого вытянутого/тянущегося пальца строим «ленту» от base к удлинённому кончику,
+// текстура берётся из реального участка base→tip и растягивается вдоль удлинённой ленты.
+// Рисует в свой offscreen GL-канвас; app блитит его в основной 2D-канвас.
 
 const VERT = `
-attribute vec2 a_pos;   // clip space
-attribute vec2 a_uv;    // bg: texcoord; strip: (u, v)
+attribute vec2 a_pos;
+attribute vec2 a_uv;
 varying vec2 v_uv;
 void main(){ v_uv = a_uv; gl_Position = vec4(a_pos, 0.0, 1.0); }
 `;
@@ -16,9 +14,9 @@ const FRAG = `
 precision mediump float;
 uniform sampler2D u_tex;
 uniform int u_mode;       // 0 = фон, 1 = лента
-uniform vec2 u_srcA;      // локоть (display-норм. координаты)
-uniform vec2 u_srcB;      // кисть
-uniform float u_srcHalf;  // полуширина источника-предплечья
+uniform vec2 u_srcA;      // база пальца (display-норм.)
+uniform vec2 u_srcB;      // реальный кончик
+uniform float u_srcHalf;  // полуширина источника
 varying vec2 v_uv;
 void main(){
   if (u_mode == 0) { gl_FragColor = texture2D(u_tex, v_uv); return; }
@@ -28,9 +26,9 @@ void main(){
   vec2 d = normalize(u_srcB - u_srcA + vec2(1e-5));
   vec2 perp = vec2(-d.y, d.x);
   vec2 sp = c + perp * (v * u_srcHalf);
-  vec2 tc = vec2(1.0 - sp.x, sp.y);          // зеркальная выборка под селфи-вид
+  vec2 tc = vec2(1.0 - sp.x, sp.y);            // зеркальная выборка под селфи-вид
   vec4 col = texture2D(u_tex, tc);
-  float a = 1.0 - smoothstep(0.72, 1.0, abs(v)); // мягкие края ленты
+  float a = 1.0 - smoothstep(0.78, 1.0, abs(v)); // мягкие края
   gl_FragColor = vec4(col.rgb, col.a * a);
 }
 `;
@@ -100,17 +98,15 @@ export class RealisticRenderer {
     }
   }
 
-  // Возвращает true при успешной отрисовке (тогда app блитит this.canvas).
-  draw(video, model, s, opts) {
-    if (!this.ok || !s || !s.segments) return false;
-    if (!model.elbow) return false; // нужен реальный локоть из позы
+  // band — состояние нити из pinch.js. Тянет реальные пиксели у руки вдоль нити.
+  draw(video, band, model, opts) {
+    if (!this.ok) return false;
     const gl = this.gl;
     const W = opts.width;
     const H = opts.height;
     this.resize(W, H);
     gl.viewport(0, 0, W, H);
 
-    // загрузка кадра видео в текстуру
     try {
       gl.bindTexture(gl.TEXTURE_2D, this.tex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
@@ -123,30 +119,34 @@ export class RealisticRenderer {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
 
-    // ----- фон: зеркальное видео на весь экран -----
+    // фон: зеркальное видео
     gl.disable(gl.BLEND);
     gl.uniform1i(this.u_mode, 0);
-    // display-углы (nx,ny) → clip; texcoord = (1-nx, ny)
-    const bg = new Float32Array([
-      -1, 1, 1, 0, // top-left
-      -1, -1, 1, 1, // bottom-left
-      1, 1, 0, 0, // top-right
-      1, -1, 0, 1, // bottom-right
-    ]);
-    this._upload(bg);
+    this._upload(
+      new Float32Array([-1, 1, 1, 0, -1, -1, 1, 1, 1, 1, 0, 0, 1, -1, 0, 1]),
+    );
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-    // ----- лента предплечья -----
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    gl.uniform1i(this.u_mode, 1);
-    gl.uniform2f(this.u_srcA, model.elbow.x, model.elbow.y);
-    gl.uniform2f(this.u_srcB, model.wrist.x, model.wrist.y);
-    gl.uniform1f(this.u_srcHalf, Math.max(0.04, model.handLen * 0.6));
-
-    const verts = this._buildStrip(s.segments, W, H);
-    this._upload(verts);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, verts.length / 4);
+    // нить: тянем кожу/пиксели у руки (b) вдоль всей нити a→b
+    if (band && band.active) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.uniform1i(this.u_mode, 1);
+      const HL = model.handLen || 0.15;
+      const dx = band.b.x - band.a.x;
+      const dy = band.b.y - band.a.y;
+      const dl = Math.hypot(dx, dy) || 1;
+      const ux = dx / dl;
+      const uy = dy / dl;
+      const srcLen = HL * 1.1; // сколько реальной кожи у руки берём в растяжку
+      // srcA соответствует u=0 (якорь), srcB — u=1 (рука)
+      gl.uniform2f(this.u_srcA, band.b.x - ux * srcLen, band.b.y - uy * srcLen);
+      gl.uniform2f(this.u_srcB, band.b.x, band.b.y);
+      gl.uniform1f(this.u_srcHalf, Math.max(0.02, HL * 0.32));
+      const verts = this._buildStrip(band, model, W, H);
+      this._upload(verts);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, verts.length / 4);
+    }
     return true;
   }
 
@@ -154,45 +154,40 @@ export class RealisticRenderer {
     const gl = this.gl;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
     gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW);
-    const stride = 16; // 4 floats
+    const stride = 16;
     gl.enableVertexAttribArray(this.a_pos);
     gl.vertexAttribPointer(this.a_pos, 2, gl.FLOAT, false, stride, 0);
     gl.enableVertexAttribArray(this.a_uv);
     gl.vertexAttribPointer(this.a_uv, 2, gl.FLOAT, false, stride, 8);
   }
 
-  // Triangle-strip лента: на каждый сегмент 2 вершины (лево/право).
-  // pos = clip(display), uv = (u вдоль, v поперёк ±1).
-  _buildStrip(segs, W, H) {
-    const n = segs.length;
-    const out = new Float32Array(n * 2 * 4);
+  // Лента a → b; N сегментов, на каждый 2 вершины (±ширина).
+  _buildStrip(band, model, W, H) {
+    const N = 10;
+    const out = new Float32Array((N + 1) * 2 * 4);
+    const baseW = (model.handLen || 0.15) * H * 0.55;
+    const halfPx = baseW / (1 + band.stretch * 0.5) / 2; // истончение при растяжении
+    const dx = (band.b.x - band.a.x) * W;
+    const dy = (band.b.y - band.a.y) * H;
+    const dl = Math.hypot(dx, dy) || 1;
+    const pxn = (-dy / dl) * halfPx;
+    const pyn = (dx / dl) * halfPx;
     let o = 0;
-    for (let i = 0; i < n; i++) {
-      const a = segs[Math.max(0, i - 1)];
-      const b = segs[Math.min(n - 1, i + 1)];
-      // перпендикуляр в пиксельном пространстве
-      const tx = (b.x - a.x) * W;
-      const ty = (b.y - a.y) * H;
-      const len = Math.hypot(tx, ty) || 1;
-      const half = (segs[i].thickness * H) / 2;
-      const pxn = (-ty / len) * half; // px смещение
-      const pyn = (tx / len) * half;
-      const cx = segs[i].x * W;
-      const cy = segs[i].y * H;
-      const u = i / (n - 1);
-      // левая вершина
-      this._vtx(out, o, cx + pxn, cy + pyn, W, H, u, -1);
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const cx = (band.a.x + (band.b.x - band.a.x) * t) * W;
+      const cy = (band.a.y + (band.b.y - band.a.y) * t) * H;
+      this._vtx(out, o, cx + pxn, cy + pyn, W, H, t, -1);
       o += 4;
-      // правая вершина
-      this._vtx(out, o, cx - pxn, cy - pyn, W, H, u, 1);
+      this._vtx(out, o, cx - pxn, cy - pyn, W, H, t, 1);
       o += 4;
     }
     return out;
   }
 
   _vtx(out, o, px, py, W, H, u, v) {
-    out[o] = (px / W) * 2 - 1; // clip x
-    out[o + 1] = 1 - (py / H) * 2; // clip y
+    out[o] = (px / W) * 2 - 1;
+    out[o + 1] = 1 - (py / H) * 2;
     out[o + 2] = u;
     out[o + 3] = v;
   }

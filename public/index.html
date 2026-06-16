@@ -33,14 +33,15 @@
 
       <details id="settings" class="settings">
         <summary>Настройки эффекта</summary>
-        <label>Тягучесть <input id="sStiff" type="range" min="0.1" max="0.95" step="0.01" value="0.55" /></label>
-        <label>Инерция (желе) <input id="sDamp" type="range" min="0.3" max="0.92" step="0.01" value="0.72" /></label>
-        <label>Толщина <input id="sThick" type="range" min="0.06" max="0.24" step="0.005" value="0.14" /></label>
+        <label>Чувствительность щипка <input id="sStiff" type="range" min="0.25" max="0.7" step="0.01" value="0.45" /></label>
+        <label>Отскок (меньше = упруже) <input id="sDamp" type="range" min="3" max="14" step="0.5" value="6" /></label>
+        <label>Упругость возврата <input id="sThick" type="range" min="80" max="320" step="10" value="190" /></label>
       </details>
 
       <section class="help">
         <p>
-          Подними руку к камере и веди кистью — рука потянется за ней как резина.
+          Сожми 👌 <b>большой палец с любым другим</b> и потяни руку — между точкой
+          защипа и рукой растянется «жвачка». Отпусти щипок — она упруго отскочит назад.
           Тумблер переключает <b>мультяшный</b> и <b>реалистичный</b> рендер.
         </p>
         <p class="muted">

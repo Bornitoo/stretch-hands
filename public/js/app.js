@@ -1,6 +1,6 @@
 // app.js — сборка всего: трекинг → симуляция → рендер; UI и лайфсайкл камеры.
 import { Tracker } from './tracker.js';
-import { StretchSim, CFG } from './stretch.js';
+import { PinchStretch, PCFG } from './pinch.js';
 import { drawCartoon, drawDebug } from './render-cartoon.js';
 import { RealisticRenderer } from './render-realistic.js';
 import { Sfx } from './sfx.js';
@@ -15,7 +15,7 @@ const ctx = canvas.getContext('2d');
 const statusEl = qs('#status');
 const hintEl = qs('#hint');
 
-const sim = new StretchSim();
+const pinch = new PinchStretch();
 const sfx = new Sfx();
 let realistic = null; // WebGL-рендер создаём лениво (только при выборе режима)
 function getRealistic() {
@@ -26,7 +26,8 @@ const capture = new Capture(canvas);
 
 let mode = 'cartoon'; // 'cartoon' | 'realistic'
 let sized = false;
-let lastStretchSound = 0;
+let lastSwish = 0;
+let prevPinched = false;
 
 const tracker = new Tracker({
   onStatus: (t) => (statusEl.textContent = t),
@@ -62,39 +63,35 @@ function onFrame(model, video, tMs) {
   if (!model.ok) {
     drawVideoMirrored(video, W, H);
     hintEl.textContent = 'Покажите руку в кадр ✋';
-    sim.reset();
+    pinch.reset();
+    prevPinched = false;
     return;
   }
-  hintEl.textContent = '';
 
-  const s = sim.update({
-    anchor: model.anchor,
-    wrist: model.wrist,
-    lm: model.lm,
-    handLen: model.handLen,
-    tMs,
-  });
-  // лёгкий «свист» при заметном растяжении (антидребезг)
-  if (s.stretchRatio > 2 && tMs - lastStretchSound > 350 && s.peakVel > 0.8) {
-    sfx.stretch(Math.min(1, (s.stretchRatio - 1) / 3));
-    lastStretchSound = tMs;
+  const band = pinch.update(model.lm, model.handLen, tMs);
+
+  // подсказка / звук
+  hintEl.textContent = band.active ? '' : 'Сожми 👌 большой + любой палец и тяни';
+  if (band.active && band.pinched && band.stretch > 0.4 && tMs - lastSwish > 140) {
+    sfx.stretch(Math.min(1, band.stretch / 3));
+    lastSwish = tMs;
   }
+  if (prevPinched && !band.pinched) sfx.snap(); // отпустили → упругий отскок
+  prevPinched = band.pinched;
 
   const opts = { width: W, height: H, debug: DEBUG };
 
   if (mode === 'realistic') {
     const r = getRealistic();
-    const ok = r.draw(video, model, s, opts);
+    const ok = r.draw(video, band, model, opts);
     if (ok) {
       ctx.drawImage(r.canvas, 0, 0, W, H);
       if (DEBUG) drawDebug(ctx, model, W, H);
-      hintEl.textContent = '';
     } else {
-      // WebGL недоступен — мягкий фоллбэк на cartoon
-      drawCartoon(ctx, video, model, s, opts);
+      drawCartoon(ctx, video, model, band, opts); // фоллбэк
     }
   } else {
-    drawCartoon(ctx, video, model, s, opts);
+    drawCartoon(ctx, video, model, band, opts);
   }
 }
 
@@ -167,8 +164,8 @@ function bindSlider(id, apply) {
   if (!el) return;
   el.addEventListener('input', () => apply(parseFloat(el.value)));
 }
-bindSlider('#sStiff', (v) => (CFG.STIFFNESS = v)); // тягучесть/отзывчивость
-bindSlider('#sDamp', (v) => (CFG.DAMPING = v)); // инерция «желе»
-bindSlider('#sThick', (v) => (CFG.BASE_THICKNESS = v)); // толщина
+bindSlider('#sStiff', (v) => (PCFG.PINCH_ON = v)); // чувствительность щипка
+bindSlider('#sDamp', (v) => (PCFG.SPRING_DAMP = v)); // отскок (меньше = упруже)
+bindSlider('#sThick', (v) => (PCFG.SPRING_K = v)); // упругость возврата
 
 if (DEBUG) qs('#settings')?.removeAttribute('hidden');

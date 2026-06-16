@@ -32,4 +32,21 @@ export class Sfx {
     o.stop(t + 0.2);
   }
 
+  // «бойнг» упругого отскока при отпускании щипка
+  snap() {
+    if (!this.enabled) return;
+    const ctx = this._ensure();
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(180, t);
+    o.frequency.exponentialRampToValueAtTime(680, t + 0.08);
+    o.frequency.exponentialRampToValueAtTime(320, t + 0.22);
+    g.gain.setValueAtTime(0.18, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
+    o.connect(g).connect(ctx.destination);
+    o.start(t);
+    o.stop(t + 0.28);
+  }
 }
