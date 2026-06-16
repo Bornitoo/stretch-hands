@@ -117,7 +117,7 @@ export function drawDebug(ctx, model, W, H) {
   }
   if (model.anchor) {
     const a = toPx(model.anchor, W, H);
-    ctx.fillStyle = model.poseOk ? '#3cf' : '#f93';
+    ctx.fillStyle = '#f93';
     ctx.beginPath();
     ctx.arc(a.x, a.y, 8, 0, Math.PI * 2);
     ctx.fill();

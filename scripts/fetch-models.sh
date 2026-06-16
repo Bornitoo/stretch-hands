@@ -16,9 +16,5 @@ echo "→ модель кисти"
 curl -fsSL -o "$DEST/hand_landmarker.task" \
   "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task"
 
-echo "→ модель позы (lite)"
-curl -fsSL -o "$DEST/pose_landmarker_lite.task" \
-  "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
-
 echo "Готово:"
 ls -la "$DEST"

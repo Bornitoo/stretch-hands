@@ -87,18 +87,15 @@ function onFrame(model, video, tMs) {
       if (DEBUG) drawDebug(ctx, model, W, H);
       hintEl.textContent = '';
     } else {
-      // нет позы/WebGL — мягкий фоллбэк на cartoon
+      // WebGL недоступен — мягкий фоллбэк на cartoon
       drawCartoon(ctx, video, model, s, opts);
-      hintEl.textContent = model.poseOk ? '' : 'Для реалистичного режима встаньте в кадр по пояс';
     }
   } else {
     drawCartoon(ctx, video, model, s, opts);
   }
 
-  // HUD: fps / делегат / поза — видно сразу, что происходит
-  statusEl.textContent =
-    `${Math.round(tracker.fps)} fps · ${tracker.delegate}` +
-    (tracker.pose ? (tracker.poseActive ? ' · поза вкл' : ' · поза выкл (fps)') : '');
+  // HUD: fps · GPU/CPU — видно сразу, что происходит
+  statusEl.textContent = `${Math.round(tracker.fps)} fps · ${tracker.delegate}`;
 }
 
 // ---------- UI ----------
