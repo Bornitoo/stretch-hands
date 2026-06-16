@@ -56,6 +56,9 @@ function onFrame(model, video, tMs) {
   const W = canvas.width;
   const H = canvas.height;
 
+  // HUD обновляем ВСЕГДА (даже когда руки нет в кадре)
+  statusEl.textContent = `${Math.round(tracker.fps)} fps · ${tracker.delegate}`;
+
   if (!model.ok) {
     drawVideoMirrored(video, W, H);
     hintEl.textContent = 'Покажите руку в кадр ✋';
@@ -93,9 +96,6 @@ function onFrame(model, video, tMs) {
   } else {
     drawCartoon(ctx, video, model, s, opts);
   }
-
-  // HUD: fps · GPU/CPU — видно сразу, что происходит
-  statusEl.textContent = `${Math.round(tracker.fps)} fps · ${tracker.delegate}`;
 }
 
 // ---------- UI ----------
