@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Stretch Hands — резиновая рука в браузере</title>
+    <meta
+      name="description"
+      content="Растягивай руку как резиновую прямо в браузере через вебкамеру. Всё работает локально, ничего не уходит на сервер."
+    />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <h1>Stretch&nbsp;Hands <span class="sub">резиновая рука в браузере</span></h1>
+      <span id="camDot" class="camdot" title="статус камеры"></span>
+    </header>
+
+    <main>
+      <div class="stage">
+        <canvas id="out" width="1280" height="720"></canvas>
+        <div id="hint" class="hint"></div>
+        <div id="status" class="status"></div>
+      </div>
+
+      <div class="controls">
+        <button id="btnStart" class="primary">Включить камеру</button>
+        <button id="btnMode">Режим: Мультяшный</button>
+        <button id="btnSnap" title="Сохранить кадр PNG">📸 Снимок</button>
+        <button id="btnRec">● Запись</button>
+        <button id="btnSound">🔊 Звук</button>
+      </div>
+
+      <details id="settings" class="settings">
+        <summary>Настройки эффекта</summary>
+        <label>Тягучесть <input id="sStiff" type="range" min="0.1" max="0.95" step="0.01" value="0.55" /></label>
+        <label>Инерция (желе) <input id="sDamp" type="range" min="0.3" max="0.92" step="0.01" value="0.72" /></label>
+        <label>Толщина <input id="sThick" type="range" min="0.06" max="0.24" step="0.005" value="0.14" /></label>
+      </details>
+
+      <section class="help">
+        <p>
+          Вытяни руку в сторону или вперёд — она потянется как резина. Резкий бросок =
+          <b>удар</b> со вспышкой и звуком. Кулак ✊ / раскрытая ладонь 🖐 меняют режим.
+        </p>
+        <p class="muted">
+          Всё считается локально в браузере: видео и записи никуда не отправляются.
+          Лучше всего на десктопе в Chrome. <code>?debug=1</code> — каркас руки и настройки.
+        </p>
+      </section>
+    </main>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

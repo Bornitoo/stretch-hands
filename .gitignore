@@ -1,0 +1,9 @@
+node_modules/
+.wrangler/
+*.log
+.DS_Store
+
+# Тяжёлые бинарники MediaPipe не держим в git — тянутся скриптом scripts/fetch-models.sh.
+# При деплое они физически лежат в public/vendor/mediapipe/ и уезжают на Cloudflare.
+public/vendor/mediapipe/*.task
+public/vendor/mediapipe/*.wasm

@@ -1,0 +1,13 @@
+{
+  "name": "stretch-hands",
+  "version": "1.0.0",
+  "description": "Растягивай руку как резиновую в браузере через вебкамеру (MediaPipe + WebGL).",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "models": "bash scripts/fetch-models.sh",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  }
+}

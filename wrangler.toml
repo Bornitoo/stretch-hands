@@ -1,0 +1,7 @@
+name = "stretch-hands"
+compatibility_date = "2026-06-01"
+
+# Статический сайт: Worker раздаёт всё из public/ (Cloudflare Static Assets),
+# кастомный обработчик не нужен.
+[assets]
+directory = "public"
