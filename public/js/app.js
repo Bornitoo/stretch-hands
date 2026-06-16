@@ -1,9 +1,8 @@
 // app.js — сборка всего: трекинг → симуляция → рендер; UI и лайфсайкл камеры.
 import { Tracker } from './tracker.js';
 import { StretchSim, CFG } from './stretch.js';
-import { drawCartoon, drawImpacts, drawDebug } from './render-cartoon.js';
+import { drawCartoon, drawDebug } from './render-cartoon.js';
 import { RealisticRenderer } from './render-realistic.js';
-import { Pistol } from './pistol.js';
 import { Sfx } from './sfx.js';
 import { Capture } from './capture.js';
 
@@ -18,8 +17,11 @@ const hintEl = qs('#hint');
 
 const sim = new StretchSim();
 const sfx = new Sfx();
-const pistol = new Pistol({ sfx });
-const realistic = new RealisticRenderer();
+let realistic = null; // WebGL-рендер создаём лениво (только при выборе режима)
+function getRealistic() {
+  if (!realistic) realistic = new RealisticRenderer();
+  return realistic;
+}
 const capture = new Capture(canvas);
 
 let mode = 'cartoon'; // 'cartoon' | 'realistic'
@@ -69,8 +71,6 @@ function onFrame(model, video, tMs) {
     handLen: model.handLen,
     tMs,
   });
-  const fx = pistol.update(s, tMs);
-
   // лёгкий «свист» при заметном растяжении (антидребезг)
   if (s.stretchRatio > 2 && tMs - lastStretchSound > 350 && s.peakVel > 0.8) {
     sfx.stretch(Math.min(1, (s.stretchRatio - 1) / 3));
@@ -80,25 +80,25 @@ function onFrame(model, video, tMs) {
   const opts = { width: W, height: H, debug: DEBUG };
 
   if (mode === 'realistic') {
-    const ok = realistic.draw(video, model, s, opts);
+    const r = getRealistic();
+    const ok = r.draw(video, model, s, opts);
     if (ok) {
-      ctx.save();
-      if (fx.shake > 0.2) {
-        ctx.translate((Math.random() - 0.5) * fx.shake, (Math.random() - 0.5) * fx.shake);
-      }
-      ctx.drawImage(realistic.canvas, 0, 0, W, H);
-      drawImpacts(ctx, fx.impacts, W, H);
+      ctx.drawImage(r.canvas, 0, 0, W, H);
       if (DEBUG) drawDebug(ctx, model, W, H);
-      ctx.restore();
       hintEl.textContent = '';
     } else {
       // нет позы/WebGL — мягкий фоллбэк на cartoon
-      drawCartoon(ctx, video, model, s, fx, opts);
+      drawCartoon(ctx, video, model, s, opts);
       hintEl.textContent = model.poseOk ? '' : 'Для реалистичного режима встаньте в кадр по пояс';
     }
   } else {
-    drawCartoon(ctx, video, model, s, fx, opts);
+    drawCartoon(ctx, video, model, s, opts);
   }
+
+  // HUD: fps / делегат / поза — видно сразу, что происходит
+  statusEl.textContent =
+    `${Math.round(tracker.fps)} fps · ${tracker.delegate}` +
+    (tracker.pose ? (tracker.poseActive ? ' · поза вкл' : ' · поза выкл (fps)') : '');
 }
 
 // ---------- UI ----------
@@ -141,7 +141,7 @@ btnStart.addEventListener('click', async () => {
 btnMode.addEventListener('click', () => {
   mode = mode === 'cartoon' ? 'realistic' : 'cartoon';
   btnMode.textContent = mode === 'cartoon' ? 'Режим: Мультяшный' : 'Режим: Реалистичный';
-  if (mode === 'realistic' && !realistic.ok) {
+  if (mode === 'realistic' && !getRealistic().ok) {
     statusEl.textContent = 'WebGL недоступен — остаюсь в мультяшном';
     mode = 'cartoon';
     btnMode.textContent = 'Режим: Мультяшный';

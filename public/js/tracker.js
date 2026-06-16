@@ -24,14 +24,25 @@ export class Tracker {
     this.pose = null;
     this.running = false;
     this.usePose = true; // можно выключить ради fps
+    this.poseActive = true; // адаптивно гасится на слабых машинах
     this._minGap = 33;
     this._nextAt = 0;
+    // поза гоняется редко и кешируется (плечо/локоть двигаются медленно)
+    this.POSE_EVERY_MS = 150;
+    this._lastPoseAt = -1e9;
+    this._lastPoseLm = null;
+    // телеметрия производительности
+    this.delegate = '?';
+    this.fps = 0;
+    this._emaDur = 0;
+    this._lastFrameTs = 0;
   }
 
   async _acquireCamera() {
     this.onStatus('Запрашиваю камеру…');
+    // 640x480 (как в doom-hands) — заметно быстрее инференса, чем 720p
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 1280, height: 720, facingMode: 'user' },
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
       audio: false,
     });
     if (!this.video) {
@@ -53,15 +64,24 @@ export class Tracker {
         ...extra,
       });
       try {
-        return await Cls.createFromOptions(fileset, opts('GPU'));
+        const m = await Cls.createFromOptions(fileset, opts('GPU'));
+        this.delegate = 'GPU';
+        return m;
       } catch (e) {
         console.warn(`${file}: GPU не завёлся, падаю на CPU`, e);
+        this.delegate = 'CPU';
         return await Cls.createFromOptions(fileset, opts('CPU'));
       }
     };
 
     this.onStatus('Загружаю модель кисти…');
-    this.hand = await mk(HandLandmarker, 'hand_landmarker.task', { numHands: 1 });
+    this.hand = await mk(HandLandmarker, 'hand_landmarker.task', {
+      numHands: 1,
+      // пониже пороги — чтобы кисть подхватывалась легче (в т.ч. на широком кадре)
+      minHandDetectionConfidence: 0.4,
+      minHandPresenceConfidence: 0.4,
+      minTrackingConfidence: 0.4,
+    });
 
     if (this.usePose) {
       this.onStatus('Загружаю модель позы…');
@@ -95,8 +115,23 @@ export class Tracker {
         }
         const dur = performance.now() - t0;
         // адаптивный троттлинг: тяжёлый инференс → реже (паттерн doom-hands)
-        this._minGap = Math.max(16, Math.min(120, dur * 1.5));
+        this._minGap = Math.max(16, Math.min(120, dur * 1.2));
         this._nextAt = performance.now() + this._minGap;
+
+        // телеметрия fps (по интервалу между обработанными кадрами)
+        if (this._lastFrameTs) {
+          const inst = 1000 / Math.max(1, now - this._lastFrameTs);
+          this.fps = this.fps ? this.fps * 0.8 + inst * 0.2 : inst;
+        }
+        this._lastFrameTs = now;
+
+        // адаптивно гасим позу, если кадр обработки тяжёлый (слабая машина/CPU-делегат)
+        this._emaDur = this._emaDur ? this._emaDur * 0.85 + dur * 0.15 : dur;
+        if (this.poseActive && this._emaDur > 60) {
+          this.poseActive = false;
+          this._lastPoseLm = null;
+          console.warn('Поза отключена ради fps (тяжёлый кадр).');
+        }
       }
       if (this.video?.requestVideoFrameCallback) this.video.requestVideoFrameCallback(loop);
       else requestAnimationFrame(loop);
@@ -106,24 +141,30 @@ export class Tracker {
 
   _processFrame(tMs) {
     let lm = null;
-    const hres = this.hand.detectForVideo(this.video, tMs);
-    if (hres.landmarks && hres.landmarks.length > 0) {
-      lm = hres.landmarks[0].map(mirror);
+    try {
+      const hres = this.hand.detectForVideo(this.video, tMs);
+      if (hres.landmarks && hres.landmarks.length > 0) {
+        lm = hres.landmarks[0].map(mirror);
+      }
+    } catch (e) {
+      /* кадр мог быть не готов */
     }
 
-    let poseLm = null;
-    if (this.pose && lm) {
+    // Поза тяжёлая — гоняем её РЕДКО (раз в ~POSE_EVERY_MS) и кешируем плечо/локоть.
+    // Иначе два инференса на кадр роняют fps до ~2 (выглядит как «нет анимации»).
+    if (this.pose && this.poseActive && lm && tMs - this._lastPoseAt >= this.POSE_EVERY_MS) {
+      this._lastPoseAt = tMs;
       try {
         const pres = this.pose.detectForVideo(this.video, tMs);
-        if (pres.landmarks && pres.landmarks.length > 0) {
-          poseLm = pres.landmarks[0].map(mirror);
-        }
+        this._lastPoseLm =
+          pres.landmarks && pres.landmarks.length > 0 ? pres.landmarks[0].map(mirror) : null;
       } catch (e) {
         /* поза опциональна */
       }
     }
+    if (!lm) this._lastPoseLm = null; // нет кисти — сбрасываем кеш позы
 
-    const model = this._buildModel(lm, poseLm);
+    const model = this._buildModel(lm, this._lastPoseLm);
     this.onFrame(model, this.video, tMs);
   }
 

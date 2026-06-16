@@ -7,3 +7,6 @@ node_modules/
 # При деплое они физически лежат в public/vendor/mediapipe/ и уезжают на Cloudflare.
 public/vendor/mediapipe/*.task
 public/vendor/mediapipe/*.wasm
+_test/
+test/harness-run.mjs
+test/live-run.mjs

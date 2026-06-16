@@ -13,15 +13,11 @@ function perp(ax, ay, bx, by) {
   return { x: -ty / len, y: tx / len };
 }
 
-export function drawCartoon(ctx, video, model, s, fx, opts) {
+export function drawCartoon(ctx, video, model, s, opts) {
   const W = opts.width;
   const H = opts.height;
 
   ctx.save();
-  // тряска от ударов
-  if (fx && fx.shake > 0.2) {
-    ctx.translate((Math.random() - 0.5) * fx.shake, (Math.random() - 0.5) * fx.shake);
-  }
 
   // фон: зеркальное видео
   ctx.save();
@@ -34,8 +30,6 @@ export function drawCartoon(ctx, video, model, s, fx, opts) {
     drawLimb(ctx, s.segments, W, H);
     drawCuff(ctx, s.wrist, s.handLen, W, H);
   }
-
-  if (fx && fx.impacts) drawImpacts(ctx, fx.impacts, W, H);
 
   if (opts.debug && model && model.lm) drawDebug(ctx, model, W, H);
 
@@ -89,11 +83,11 @@ function drawLimb(ctx, segs, W, H) {
   ctx.stroke();
 }
 
-// небольшой «манжет» у кисти, чтобы рука переходила в реальную ладонь на видео
+// небольшой «манжет» у запястья — не перекрывает реальную кисть (она видна из видео)
 function drawCuff(ctx, wrist, handLen, W, H) {
   if (!wrist) return;
   const c = toPx(wrist, W, H);
-  const r = Math.max(8, handLen * H * 0.45);
+  const r = Math.max(6, handLen * H * 0.28);
   ctx.beginPath();
   ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
   ctx.fillStyle = SKIN.b;
@@ -101,33 +95,6 @@ function drawCuff(ctx, wrist, handLen, W, H) {
   ctx.lineWidth = 2;
   ctx.strokeStyle = SKIN.edge;
   ctx.stroke();
-}
-
-export function drawImpacts(ctx, impacts, W, H) {
-  for (const im of impacts) {
-    const c = toPx(im, W, H);
-    const maxR = (40 + 120 * im.strength) * (0.4 + im.progress);
-    const alpha = 1 - im.progress;
-    // кольцо
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, maxR, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(255,235,120,${alpha * 0.9})`;
-    ctx.lineWidth = 6 * alpha + 1;
-    ctx.stroke();
-    // вспышка-звезда
-    const spikes = 8;
-    ctx.beginPath();
-    for (let i = 0; i < spikes * 2; i++) {
-      const rr = i % 2 === 0 ? maxR * 0.7 : maxR * 0.3;
-      const ang = (Math.PI / spikes) * i + im.progress;
-      const px = c.x + Math.cos(ang) * rr;
-      const py = c.y + Math.sin(ang) * rr;
-      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-    ctx.fillStyle = `rgba(255,255,255,${alpha * 0.5})`;
-    ctx.fill();
-  }
 }
 
 const HAND_CHAINS = [
